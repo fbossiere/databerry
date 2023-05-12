@@ -1,4 +1,5 @@
-import { Usage } from '@prisma/client';
+import { MessageFrom, Usage } from '@prisma/client';
+import cuid from 'cuid';
 import { NextApiResponse } from 'next';
 
 import { AppNextApiRequest, ChatRequest } from '@app/types';
@@ -28,6 +29,20 @@ export const chatAgentRequest = async (
       owner: {
         include: {
           usage: true,
+          conversations: {
+            where: {
+              agentId: id,
+              userId: session?.user?.id,
+            },
+            include: {
+              messages: {
+                take: 3,
+                orderBy: {
+                  createdAt: 'desc',
+                },
+              },
+            },
+          },
         },
       },
       tools: {
@@ -64,8 +79,58 @@ export const chatAgentRequest = async (
     res.write(`data: ${input}\n\n`);
   };
 
-  const [answer] = await Promise.all([
-    manager.query(data.query, data.streaming ? streamData : undefined),
+  const conversationId = agent?.owner?.conversations?.[0]?.id || cuid();
+
+  const [answer, conversation] = await Promise.all([
+    manager.query({
+      input: data.query,
+      stream: data.streaming ? streamData : undefined,
+      history: agent?.owner?.conversations?.[0]?.messages
+        ?.reverse()
+        ?.map((m) => ({
+          from: m.from,
+          message: m.text,
+        })),
+    }),
+    await prisma.conversation.upsert({
+      where: {
+        id: conversationId,
+      },
+      create: {
+        messages: {
+          createMany: {
+            data: [
+              {
+                from: MessageFrom.human,
+                text: data.query,
+              },
+            ],
+          },
+        },
+        user: {
+          connect: {
+            id: session?.user?.id,
+          },
+        },
+        agent: {
+          connect: {
+            id: agent?.id,
+          },
+        },
+      },
+      update: {
+        messages: {
+          createMany: {
+            data: [
+              {
+                from: MessageFrom.human,
+                text: data.query,
+              },
+            ],
+          },
+        },
+      },
+    }),
     prisma.usage.update({
       where: {
         id: agent?.owner?.usage?.id,
@@ -75,6 +140,18 @@ export const chatAgentRequest = async (
       },
     }),
   ]);
+
+  await prisma.message.create({
+    data: {
+      conversation: {
+        connect: {
+          id: conversationId,
+        },
+      },
+      from: MessageFrom.agent,
+      text: answer,
+    },
+  });
 
   if (data.streaming) {
     streamData('[DONE]');

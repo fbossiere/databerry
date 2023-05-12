@@ -67,6 +67,7 @@ export default function AgentPage() {
 
   const { handleChatSubmit, history } = useAgentChat({
     queryAgentURL: `/api/agents/${getAgentQuery?.data?.id}/query`,
+    queryHistoryURL: `/api/agents/${getAgentQuery?.data?.id}/history`,
   });
 
   const handleDeleteAgent = async () => {

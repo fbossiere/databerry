@@ -28,6 +28,7 @@ model User {
   subscriptions Subscription[]  @relation("user")
   apiKeys       UserApiKey[]
   usage         Usage?
+  conversations Conversation[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -151,7 +152,8 @@ model Agent {
   promptType  PromptType @default(customer_support) @map("prompt_type")
   temperature Float      @default(0.0)
 
-  visibility AgentVisibility @default(private)
+  visibility   AgentVisibility @default(private)
+  conversation Conversation[]
 
   ownerId             String?               @map("owner_id")
   owner               User?                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -167,6 +169,38 @@ model Agent {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("agents")
+}
+
+model Conversation {
+  id          String  @id @default(cuid())
+  fingerprint String?
+
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id])
+
+  agent    Agent?    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId  String?   @map("agent_id")
+  messages Message[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([fingerprint], type: Hash)
+  @@map("conversations")
+}
+
+model Message {
+  id   String      @id @default(cuid())
+  text String
+  from MessageFrom
+
+  conversationId String?       @map("conversation_id")
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("messages")
 }
 
 model Tool {
@@ -379,4 +413,9 @@ enum PriceInterval {
 enum PromptType {
   raw
   customer_support
+}
+
+enum MessageFrom {
+  agent
+  human
 }

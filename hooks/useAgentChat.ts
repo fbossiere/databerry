@@ -2,19 +2,45 @@ import {
   EventStreamContentType,
   fetchEventSource,
 } from '@microsoft/fetch-event-source';
+import { Prisma } from '@prisma/client';
+import { useEffect } from 'react';
+import useSWR from 'swr';
 
+import { getHistory } from '@app/pages/api/agents/[id]/history';
 import { ApiError, ApiErrorType } from '@app/utils/api-error';
+import { fetcher } from '@app/utils/swr-fetcher';
 
 import useStateReducer from './useStateReducer';
 
 type Props = {
   queryAgentURL: string;
+  queryHistoryURL: string;
 };
 
-const useAgentChat = ({ queryAgentURL }: Props) => {
+const useAgentChat = ({ queryAgentURL, queryHistoryURL }: Props) => {
   const [state, setState] = useStateReducer({
     history: [] as { from: 'human' | 'agent'; message: string }[],
   });
+
+  const getHistoryQuery = useSWR<Prisma.PromiseReturnType<typeof getHistory>>(
+    queryHistoryURL,
+    fetcher,
+    {
+      onSuccess: (data) => {
+        setState({
+          history: [
+            ...(data?.messages || [])?.map((message) => ({
+              from: message.from,
+              message: message.text,
+            })),
+            ...state.history,
+          ],
+        });
+      },
+    }
+  );
+
+  console.log('CHATA DATA', getHistoryQuery.data);
 
   const handleChatSubmit = async (message: string) => {
     if (!message) {
